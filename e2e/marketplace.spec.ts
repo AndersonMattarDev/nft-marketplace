@@ -1,0 +1,271 @@
+import { expect, test } from '@playwright/test'
+
+function setProjectViewport(page: import('@playwright/test').Page, projectName: string) {
+  const width = projectName === 'mobile-chromium' ? 390 : projectName === 'tablet-chromium' ? 768 : 1440
+  const height = projectName === 'mobile-chromium' ? 844 : projectName === 'tablet-chromium' ? 1024 : 1000
+  return page.setViewportSize({ width, height })
+}
+
+async function registerCollector(page: import('@playwright/test').Page) {
+  const email = `collector-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`
+  await page.goto('/register')
+  await page.getByLabel('Nome completo').fill('Colecionador de Teste')
+  await page.getByLabel('E-mail').fill(email)
+  await page.getByLabel('Senha').fill('SenhaSegura123')
+  await page.getByRole('button', { name: 'Criar conta' }).click()
+  await expect(page.getByRole('link', { name: 'Minha conta' })).toBeVisible()
+  return email
+}
+
+async function addWallet(page: import('@playwright/test').Page) {
+  await page.goto('/account')
+  await page.getByLabel('Nome', { exact: true }).fill('Carteira de teste')
+  await page.getByLabel('Endereço Ethereum').fill(`0x${'1'.repeat(40)}`)
+  await page.getByRole('button', { name: 'Cadastrar carteira' }).click()
+  await expect(page.getByLabel('Nome da carteira')).toHaveValue('Carteira de teste')
+  await expect(page.getByText('Principal', { exact: true })).toBeVisible()
+}
+
+test('catalog search, filters and pagination are represented in the URL', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: /SEJA DONO DO FUTURO/ })).toBeVisible()
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Paginação do catálogo' })
+      .getByRole('button', { name: '1', exact: true }),
+  ).toHaveAttribute('aria-current', 'page')
+  await page.getByRole('button', { name: 'Próxima página' }).click()
+  await expect(page).toHaveURL(/page=2/)
+  await page.goBack()
+  await expect(page).not.toHaveURL(/page=2/)
+  await page.getByRole('button', { name: /Arte digital/ }).click()
+  await expect(page).toHaveURL(/category=Art/)
+  await page.getByRole('button', { name: 'Buscar NFTs' }).click()
+  await page.getByPlaceholder('Buscar por nome, coleção ou artista...').fill('Cosmic')
+  await expect(page).toHaveURL(/q=Cosmic/)
+  await expect(page.getByRole('link', { name: /Cosmic Bloom/ }).first()).toBeVisible()
+})
+
+test('collector can register, return as a session and log out', async ({ page }) => {
+  await page.goto('/register')
+  await page.getByLabel('Nome completo').fill('Teste Colecionador')
+  await page.getByLabel('E-mail').fill(`collector-${Date.now()}@example.test`)
+  await page.getByLabel('Senha').fill('SenhaSegura123')
+  await page.getByRole('button', { name: 'Criar conta' }).click()
+  await expect(page.getByRole('link', { name: 'Minha conta' })).toBeVisible()
+  await page.reload()
+  await page.getByRole('link', { name: 'Minha conta' }).click()
+  await expect(page.getByRole('heading', { name: /Olá, Teste Colecionador/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Sair da conta' }).click()
+  await expect(page.getByRole('link', { name: 'Entrar' })).toBeVisible()
+})
+
+test('visitor cart migrates to its account and is isolated from another account', async ({ page }) => {
+  await page.goto('/nft/cosmic-001')
+  await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click()
+  await expect(page.locator('p[role="status"]')).toContainText('NFT adicionado ao carrinho')
+
+  await page.goto('/register')
+  await page.getByLabel('Nome completo').fill('Conta Isolada')
+  await page.getByLabel('E-mail').fill(`isolation-${Date.now()}@example.test`)
+  await page.getByLabel('Senha').fill('SenhaSegura123')
+  await page.getByRole('button', { name: 'Criar conta' }).click()
+  await expect(page.getByRole('link', { name: 'Minha conta' })).toBeVisible()
+  await page.goto('/cart')
+  await expect(page.getByRole('heading', { name: 'Emerald Ape #042' })).toBeVisible()
+
+  await page.goto('/account')
+  await page.getByRole('button', { name: 'Sair da conta' }).click()
+  await page.goto('/login')
+  await page.getByLabel('E-mail').fill('demo@kurio.test')
+  await page.getByLabel('Senha').fill('kurio123')
+  await page.getByRole('button', { name: 'Entrar' }).click()
+  await expect(page.getByRole('link', { name: 'Minha conta' })).toBeVisible()
+  await page.goto('/cart')
+  await expect(page.getByRole('heading', { name: 'Seu carrinho está vazio' })).toBeVisible()
+})
+
+test('receipt never confirms a missing simulated order', async ({ page }) => {
+  await page.goto('/login?returnTo=%2Freceipt%2FORD-NOT-FOUND')
+  await page.getByLabel('E-mail').fill('demo@kurio.test')
+  await page.getByLabel('Senha').fill('kurio123')
+  await page.getByRole('button', { name: 'Entrar' }).click()
+  await expect(page.getByRole('heading', { name: 'Pedido não encontrado' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Compra concluída' })).toHaveCount(0)
+})
+
+test('collector completes a simulated purchase and sees a receipt', async ({ page }) => {
+  await registerCollector(page)
+  await addWallet(page)
+  await page.goto('/nft/cosmic-001')
+  await expect(page.getByRole('link', { name: /Voltar ao catálogo/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click()
+  await page.getByRole('link', { name: 'Ver carrinho' }).click()
+  await expect(page.getByRole('heading', { name: 'Seu carrinho' })).toBeVisible()
+  await page.getByRole('link', { name: 'Continuar para pagamento' }).click()
+  await page.getByRole('button', { name: 'Conectar carteira simulada' }).click()
+  await page.getByRole('button', { name: 'Confirmar compra simulada' }).click()
+  await expect(page.getByRole('heading', { name: 'Compra concluída' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Recibo · ORD-/ })).toBeVisible()
+})
+
+test('checkout requires a session and returns the collector to the purchase', async ({ page }) => {
+  await page.goto('/checkout')
+  await expect(page).toHaveURL(/login.*returnTo/)
+  await page.getByLabel('E-mail').fill('demo@kurio.test')
+  await page.getByLabel('Senha').fill('kurio123')
+  await page.getByRole('button', { name: 'Entrar' }).click()
+  await expect(page).toHaveURL(/checkout/)
+})
+
+test('favorites persist in the collector account', async ({ page }) => {
+  await registerCollector(page)
+  await page.goto('/nft/cosmic-001')
+  const favorite = page.getByRole('button', { name: 'Adicionar aos favoritos: Emerald Ape #042' })
+  await favorite.click()
+  await expect(page.getByRole('button', { name: 'Remover dos favoritos: Emerald Ape #042' })).toHaveAttribute('aria-pressed', 'true')
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Remover dos favoritos: Emerald Ape #042' })).toHaveAttribute('aria-pressed', 'true')
+  await page.goto('/account')
+  await expect(page.getByRole('heading', { name: 'Favoritos' })).toBeVisible()
+  await expect(page.getByText('Emerald Ape #042')).toBeVisible()
+})
+
+test('favorite mutation failure rolls back and can be retried', async ({ page }) => {
+  await registerCollector(page)
+  await page.goto('/nft/cosmic-001?scenario=favorite-failure')
+  await page.getByRole('button', { name: 'Adicionar aos favoritos: Emerald Ape #042' }).click()
+  await expect(page.locator('.favorite-error')).toContainText('Não foi possível atualizar os favoritos')
+  await expect(page.getByRole('button', { name: 'Adicionar aos favoritos: Emerald Ape #042' })).toHaveAttribute('aria-pressed', 'false')
+  await page.goto('/nft/cosmic-001')
+  await page.getByRole('button', { name: 'Adicionar aos favoritos: Emerald Ape #042' }).click()
+  await expect(page.getByRole('button', { name: 'Remover dos favoritos: Emerald Ape #042' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('wallet profile supports editing and choosing the primary wallet', async ({ page }) => {
+  await registerCollector(page)
+  await addWallet(page)
+  await page.getByLabel('Nome da carteira').fill('Carteira Editada')
+  await page.getByRole('button', { name: 'Salvar edição' }).click()
+  await expect(page.getByLabel('Nome da carteira')).toHaveValue('Carteira Editada')
+  await page.getByLabel('Nome', { exact: true }).fill('Carteira Secundária')
+  await page.getByLabel('Endereço Ethereum').fill(`0x${'2'.repeat(40)}`)
+  await page.getByRole('button', { name: 'Cadastrar carteira' }).click()
+  await expect(page.getByLabel('Nome da carteira').nth(1)).toHaveValue('Carteira Secundária')
+  await page.getByRole('button', { name: 'Definir como principal' }).click()
+  await expect(page.locator('.wallet-row > strong')).toHaveText(['Secundária', 'Principal'])
+})
+
+test('collector can edit profile and change password with persistence', async ({ page }) => {
+  const email = await registerCollector(page)
+  await page.goto('/account')
+  await page.getByLabel('Nome completo').fill('Perfil Atualizado')
+  await page.getByLabel('URL do avatar').fill('https://example.test/avatar.png')
+  await page.getByRole('button', { name: 'Salvar perfil' }).click()
+  await expect(page.getByText('Perfil atualizado.')).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Olá, Perfil Atualizado' })).toBeVisible()
+  await page.getByLabel('Senha atual').fill('SenhaSegura123')
+  await page.getByLabel('Nova senha').fill('SenhaNova123')
+  await page.getByRole('button', { name: 'Atualizar senha' }).click()
+  await expect(page.getByText('Senha alterada.')).toBeVisible()
+  await page.getByRole('button', { name: 'Sair da conta' }).click()
+  await page.goto('/login')
+  await page.getByLabel('E-mail').fill(email)
+  await page.getByLabel('Senha').fill('SenhaNova123')
+  await page.getByRole('button', { name: 'Entrar' }).click()
+  await expect(page.getByRole('link', { name: 'Minha conta' })).toBeVisible()
+})
+
+test('cart coupon applies and handles invalid and expired codes', async ({ page }) => {
+  await page.goto('/nft/cosmic-001')
+  await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click()
+  await page.goto('/cart')
+  await page.getByLabel('Cupom').fill('KURIO10')
+  await page.getByRole('button', { name: 'Aplicar' }).click()
+  await expect(page.getByText('Cupom KURIO10 · desconto')).toBeVisible()
+  await page.getByLabel('Cupom').fill('INVALIDO')
+  await page.getByRole('button', { name: 'Aplicar' }).click()
+  await expect(page.getByRole('alert')).toContainText('Cupom inválido')
+  await page.getByLabel('Cupom').fill('EXPIRED10')
+  await page.getByRole('button', { name: 'Aplicar' }).click()
+  await expect(page.getByRole('alert')).toContainText('expirou')
+})
+
+test('pending payment survives reload and can be resumed', async ({ page }) => {
+  await registerCollector(page)
+  await addWallet(page)
+  await page.goto('/nft/cosmic-001')
+  await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click()
+  await page.goto('/checkout?scenario=pending')
+  await page.getByRole('button', { name: 'Conectar carteira simulada' }).click()
+  await page.getByRole('button', { name: 'Confirmar compra simulada' }).click()
+  await expect(page.getByRole('heading', { name: 'Pedido aguardando confirmação' })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Pedido aguardando confirmação' })).toBeVisible()
+  await page.getByRole('button', { name: 'Simular pagamento aprovado' }).click()
+  await expect(page.getByRole('heading', { name: 'Compra concluída' })).toBeVisible()
+})
+
+test('declined payment preserves cart items for retry', async ({ page }) => {
+  await registerCollector(page)
+  await addWallet(page)
+  await page.goto('/nft/cosmic-001')
+  await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click()
+  await page.goto('/checkout?scenario=declined')
+  await page.getByRole('button', { name: 'Conectar carteira simulada' }).click()
+  await page.getByRole('button', { name: 'Confirmar compra simulada' }).click()
+  await expect(page.getByRole('heading', { name: 'Não foi possível concluir a compra' })).toBeVisible()
+  await page.getByRole('link', { name: 'Voltar ao carrinho' }).click()
+  await expect(page.getByRole('heading', { name: 'Emerald Ape #042' })).toBeVisible()
+})
+
+test('order timeout is recovered idempotently without duplicating the purchase', async ({ page }) => {
+  await registerCollector(page)
+  await addWallet(page)
+  await page.goto('/nft/cosmic-001')
+  await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click()
+  await page.goto('/checkout?scenario=timeout')
+  await page.getByRole('button', { name: 'Conectar carteira simulada' }).click()
+  await page.getByRole('button', { name: 'Confirmar compra simulada' }).click()
+  await expect(page.getByRole('alert')).toContainText('resposta expirou')
+  await page.getByRole('button', { name: 'Confirmar compra simulada' }).click()
+  await expect(page.getByRole('heading', { name: 'Compra concluída' })).toBeVisible()
+})
+
+test('mock Socket.IO price update is announced and applied', async ({ page }) => {
+  await page.goto('/?scenario=price-change')
+  await expect(page.getByRole('status').filter({ hasText: 'Preço ou disponibilidade de um NFT mudou' })).toContainText('Preço ou disponibilidade', { timeout: 10000 })
+  await page.getByRole('link', { name: 'Emerald Ape #042', exact: true }).click()
+  await expect(page.getByText('1.29 ETH')).toBeVisible()
+})
+
+test('slow network shows detail skeleton and recovers to the NFT', async ({ page }) => {
+  await page.goto('/nft/cosmic-001?scenario=slow')
+  await expect(page.locator('.detail-skeleton')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Emerald Ape #042' })).toBeVisible({ timeout: 10000 })
+})
+
+test('catalog visual baseline', async ({ page }, testInfo) => {
+  await setProjectViewport(page, testInfo.project.name)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: /SEJA DONO DO FUTURO/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Emerald Ape #042', exact: true })).toBeVisible()
+  await expect(page).toHaveScreenshot(`catalog-${testInfo.project.name}.png`)
+})
+
+test('detail and cart visual baselines', async ({ page }, testInfo) => {
+  await setProjectViewport(page, testInfo.project.name)
+  await page.goto('/nft/cosmic-001')
+  await expect(page.getByRole('heading', { name: 'Emerald Ape #042' })).toBeVisible()
+  await expect(page).toHaveScreenshot(`detail-${testInfo.project.name}.png`)
+  await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click()
+  await page.goto('/cart')
+  await expect(page.getByRole('heading', { name: 'Emerald Ape #042' })).toBeVisible()
+  await expect(page).toHaveScreenshot(`cart-${testInfo.project.name}.png`)
+  await registerCollector(page)
+  await addWallet(page)
+  await page.goto('/checkout')
+  await expect(page.getByRole('heading', { name: 'Revisão do pedido' })).toBeVisible()
+  await expect(page).toHaveScreenshot(`checkout-${testInfo.project.name}.png`)
+})
