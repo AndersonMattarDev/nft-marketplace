@@ -5,12 +5,38 @@ type User = { id: string; name: string; email: string; avatar: string; passwordD
 type AuthState = { users: User[]; sessions: Record<string, string> }
 const authStorageKey = 'kurio-auth-state'
 const walletStorageKey = 'kurio-wallets'
+const walletBalanceStorageKey = 'kurio-wallet-balances'
+const initialWalletBalanceEth = 10
+const walletTopUpEth = 1
 const initialState: AuthState = { users: [{ id: 'demo-1', name: 'Colecionador Demo', email: 'demo@kurio.test', avatar: '', passwordDigest: 'demo' }, { id: 'demo-2', name: 'Alex Colecionador', email: 'alex@kurio.test', avatar: '', passwordDigest: 'demo' }], sessions: {} }
 const readState = (): AuthState => JSON.parse(localStorage.getItem(authStorageKey) ?? JSON.stringify(initialState)) as AuthState
 const saveState = (state: AuthState) => localStorage.setItem(authStorageKey, JSON.stringify(state))
 const digest = async (password: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password)))).map((byte) => byte.toString(16).padStart(2, '0')).join('')
 const publicUser = (user: User) => ({ id: user.id, name: user.name, email: user.email, avatar: user.avatar })
 export const getMockUserId = (token: string) => readState().sessions[token]
+function readWalletBalances(): Record<string, number> {
+  return JSON.parse(localStorage.getItem(walletBalanceStorageKey) ?? '{}') as Record<string, number>
+}
+function saveWalletBalances(balances: Record<string, number>) {
+  localStorage.setItem(walletBalanceStorageKey, JSON.stringify(balances))
+}
+export function getSimulatedWalletBalance(userId: string) {
+  const balances = readWalletBalances()
+  const balance = balances[userId]
+  if (balance === undefined) {
+    balances[userId] = initialWalletBalanceEth
+    saveWalletBalances(balances)
+    return initialWalletBalanceEth
+  }
+  if (!Number.isFinite(balance) || balance < 0) throw new Error('O saldo simulado salvo é inválido.')
+  return balance
+}
+export function setSimulatedWalletBalance(userId: string, balance: number) {
+  if (!Number.isFinite(balance) || balance < 0) throw new Error('O novo saldo simulado é inválido.')
+  const balances = readWalletBalances()
+  balances[userId] = Number(balance.toFixed(2))
+  saveWalletBalances(balances)
+}
 function authenticatedUser(request: Request) {
   const token = request.headers.get('Authorization')?.replace(/^Bearer\s+/, '')
   if (!token) return null
@@ -86,6 +112,30 @@ export const authHandlers = [
     if (body.newPassword.length < 8) return HttpResponse.json({ code: 'VALIDATION_ERROR', message: 'A nova senha deve ter pelo menos 8 caracteres.' }, { status: 422 })
     currentUser.passwordDigest = await digest(body.newPassword); saveState(state)
     return HttpResponse.json({ updated: true })
+  }),
+  http.get('/api/wallets/balance', ({ request }) => {
+    const user = authenticatedUser(request)
+    if (!user) return HttpResponse.json({ code: 'SESSION_EXPIRED' }, { status: 401 })
+    return HttpResponse.json({ balanceEth: getSimulatedWalletBalance(user.id).toFixed(2) })
+  }),
+  http.post('/api/wallets/balance/top-up', ({ request }) => {
+    const user = authenticatedUser(request)
+    if (!user) return HttpResponse.json({ code: 'SESSION_EXPIRED' }, { status: 401 })
+    const balanceEth = getSimulatedWalletBalance(user.id) + walletTopUpEth
+    setSimulatedWalletBalance(user.id, balanceEth)
+    return HttpResponse.json({ balanceEth: balanceEth.toFixed(2) })
+  }),
+  http.post('/api/wallets/demo', ({ request }) => {
+    const user = authenticatedUser(request)
+    if (!user) return HttpResponse.json({ code: 'SESSION_EXPIRED' }, { status: 401 })
+    const all = readWallets()
+    const own = all[user.id] ?? []
+    const addressBytes = crypto.getRandomValues(new Uint8Array(20))
+    const address = `0x${Array.from(addressBytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`
+    const wallet: Wallet = { id: crypto.randomUUID(), label: 'Carteira simulada', address, network: 'Ethereum', primary: own.length === 0 }
+    all[user.id] = [...own, wallet]
+    saveWallets(all)
+    return HttpResponse.json(wallet, { status: 201 })
   }),
   http.get('/api/wallets', ({ request }) => {
     const user = authenticatedUser(request)

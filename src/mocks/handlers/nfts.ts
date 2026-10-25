@@ -1,7 +1,7 @@
 
 import { http, HttpResponse, delay } from 'msw'
 import { nfts } from '../fixtures/nfts'
-import { getMockUserId } from './auth'
+import { getMockUserId, getSimulatedWalletBalance, setSimulatedWalletBalance } from './auth'
 import { emitMockSocketEvent } from './realtime'
 
 type CartItem = { nftId: string; quantity: number }
@@ -219,6 +219,12 @@ export const nftHandlers = [
       network: body.network,
       version: 1,
     }
+    if (status === 'confirmed') {
+      const balanceCents = Math.round(getSimulatedWalletBalance(accountId) * 100)
+      const totalCents = Math.round(Number(order.totalEth) * 100)
+      if (balanceCents < totalCents) return HttpResponse.json({ code: 'INSUFFICIENT_BALANCE', message: 'Saldo simulado insuficiente. Recarregue a carteira e tente novamente.' }, { status: 422 })
+      setSimulatedWalletBalance(accountId, (balanceCents - totalCents) / 100)
+    }
     storedOrders.push({ owner: state.owner, key, signature, order })
     saveOrders(storedOrders)
     if (status === 'confirmed') {
@@ -245,6 +251,11 @@ export const nftHandlers = [
         const nft = nfts.find((candidate) => candidate.id === item.nftId)
         if (!nft || nft.available < item.quantity || nft.priceEth !== item.priceEth || nft.version !== item.version) return HttpResponse.json({ code: 'QUOTE_CHANGED', message: 'Preço ou disponibilidade mudou. Revise o carrinho.' }, { status: 409 })
       }
+      const accountId = owner.replace(/^user:/, '')
+      const balanceCents = Math.round(getSimulatedWalletBalance(accountId) * 100)
+      const totalCents = Math.round(Number(entry.order.totalEth) * 100)
+      if (balanceCents < totalCents) return HttpResponse.json({ code: 'INSUFFICIENT_BALANCE', message: 'Saldo simulado insuficiente. Recarregue a carteira e tente novamente.' }, { status: 422 })
+      setSimulatedWalletBalance(accountId, (balanceCents - totalCents) / 100)
       entry.order.items.forEach((item) => { const nft = nfts.find((candidate) => candidate.id === item.nftId)!; nft.available -= item.quantity; nft.version += 1 })
       for (const purchased of entry.order.items) {
         const remaining = state.items.find((item) => item.nftId === purchased.nftId)!

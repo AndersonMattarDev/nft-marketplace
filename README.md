@@ -18,6 +18,12 @@ Os testes E2E do Playwright usam Chromium nos viewports de 390, 768 e 1440 px. `
 
 Não há contas reais nem transações em blockchain. O checkout é uma demonstração simulada.
 
+## Publicar a demonstração no Vercel
+
+O app fica na pasta `nft-marketplace`. Ao importar o repositório no Vercel, configure `nft-marketplace` como **Root Directory**, use o preset Vite, o comando de build `yarn build` e a pasta de saída `dist`. A variável `VITE_ENABLE_MOCKS=true` já está definida em `.env.production`; mantenha-a habilitada nas variáveis de ambiente de produção do Vercel para ativar a API simulada.
+
+O deploy publica somente uma demonstração: contas, carteiras, saldo de teste e pedidos são armazenados no navegador de cada visitante. Não conecte pagamentos reais nem trate esses dados como persistência de produção.
+
 ## Auditorias Lighthouse
 
 O Lighthouse é uma dependência de desenvolvimento. Execute:
@@ -50,7 +56,7 @@ O Lighthouse precisa do Node.js 22.19 ou mais recente e de uma instalação do C
 - `/receipt/:orderId`: confirmação consultada na API simulada e limitada ao proprietário do pedido.
 - `/register`, `/login` e `/account`: cadastro, login, restauração de sessão, edição de perfil/avatar, senha, carteiras, favoritos e logout.
 
-Credenciais de demonstração: `demo@kurio.test` / `kurio123` e `alex@kurio.test` / `kurio123`. Cada conta de demonstração recebe uma carteira simulada na primeira consulta, permitindo concluir uma compra sem cadastro manual de carteira. Contas novas continuam podendo cadastrar a própria carteira pelo perfil. O cadastro aplica SHA-256 à senha antes de persistir o usuário simulado. Tokens de sessão e usuários simulados ficam no armazenamento local do navegador; senhas não são persistidas em texto puro. Após uma atualização, o perfil público da sessão é recuperado pela API REST.
+Credenciais de demonstração: `demo@kurio.test` / `kurio123` e `alex@kurio.test` / `kurio123`. Cada conta de demonstração recebe uma carteira simulada na primeira consulta, permitindo concluir uma compra sem cadastro manual de carteira. Contas novas podem criar uma carteira fictícia com um clique ou cadastrar um endereço de demonstração pelo perfil. Cada conta recebe 10 ETH fictícios; o perfil permite adicionar mais 1 ETH de teste. Compras confirmadas debitam o total (incluindo taxa) do saldo, e pedidos pendentes só debitam quando aprovados. Saldo e operações ficam no armazenamento local do navegador: não há valor real, transferência, chave privada ou transação em blockchain. O cadastro aplica SHA-256 à senha antes de persistir o usuário simulado. Tokens de sessão e usuários simulados ficam no armazenamento local do navegador; senhas não são persistidas em texto puro. Após uma atualização, o perfil público da sessão é recuperado pela API REST.
 
 O carrinho de visitante e os carrinhos das contas são armazenados separadamente no cenário MSW. Ao entrar ou se cadastrar, o carrinho de visitante é migrado para a conta autenticada no primeiro acesso ao carrinho. O logout limpa o cache privado do TanStack Query. A chave `kurio-order-attempt` é reutilizada ao tentar novamente um pedido após timeout; uma repetição da mesma tentativa retorna o mesmo pedido simulado.
 
@@ -67,6 +73,9 @@ O carrinho de visitante e os carrinhos das contas são armazenados separadamente
 | PATCH | `/api/profile` | Atualiza nome, e-mail e URL do avatar; valida duplicidade e formato |
 | PATCH | `/api/profile/password` | Valida a senha atual e salva somente o digest SHA-256 da nova senha |
 | GET/POST | `/api/wallets` | Lista e cadastra carteiras autenticadas; o primeiro cadastro vira principal |
+| POST | `/api/wallets/demo` | Cria um endereço aleatório de demonstração, sem chave privada ou acesso a fundos |
+| GET | `/api/wallets/balance` | Consulta o saldo fictício da conta (10 ETH na primeira consulta) |
+| POST | `/api/wallets/balance/top-up` | Adiciona 1 ETH fictício ao saldo |
 | PATCH/DELETE | `/api/wallets/:id` | Renomeia, define como principal ou remove uma carteira própria |
 | GET | `/api/favorites` | Lista IDs favoritos do colecionador autenticado |
 | POST/DELETE | `/api/favorites/:id` | Adiciona ou remove um NFT dos favoritos; a interface atualiza de forma otimista e reverte em falha |
@@ -76,9 +85,9 @@ O carrinho de visitante e os carrinhos das contas são armazenados separadamente
 | DELETE | `/api/cart/items/:id` | Remove item do carrinho atual |
 | POST | `/api/coupons/validate` | Valida cupom; `KURIO10` aplica 10%, `EXPIRED10` simula expiração e códigos desconhecidos retornam erro |
 | POST | `/api/cart/coupon` | Aplica/remove cupom persistido no carrinho e retorna desconto, taxa e total recalculados |
-| POST | `/api/orders` | Exige sessão, carteira registrada, cotação atual e `Idempotency-Key`; salva snapshot e só baixa estoque/limpa carrinho após confirmação |
+| POST | `/api/orders` | Exige sessão, carteira registrada, cotação atual, saldo suficiente e `Idempotency-Key`; debita saldo e baixa estoque somente após confirmação |
 | GET | `/api/orders/:id` | Retorna o pedido salvo somente ao proprietário, inclusive pendentes e recusados |
-| POST | `/api/orders/:id/resolve` | Retoma o pagamento pendente como confirmado ou recusado; confirmação revalida preço e estoque |
+| POST | `/api/orders/:id/resolve` | Retoma o pagamento pendente como confirmado ou recusado; confirmação revalida saldo, preço e estoque |
 
 Os pedidos simulados salvam uma cópia dos itens, quantidades, preços e totais no momento da compra. O recibo só exibe confirmação quando a consulta retorna um pedido do proprietário com estado `confirmed`.
 
@@ -94,4 +103,4 @@ O cliente Socket.IO usa `socket.io-client` e o transporte simulado usa a interce
 
 ## Limitações conhecidas
 
-O projeto continua sendo uma demonstração local com MSW, sem backend implantado, gateway real ou blockchain. O recibo usa o snapshot simulado e os links de exploração são referências fictícias. Os cenários cobrem os fluxos implementados; isso não substitui a execução e revisão da matriz completa de aceitação do desafio. Consulte `ARCHITECTURE.md` e os relatórios Lighthouse/Playwright antes de avaliar a entrega.
+O projeto continua sendo uma demonstração local ou estática com MSW, sem backend implantado, gateway real ou blockchain. O recibo usa o snapshot simulado e os links de exploração são referências fictícias. Os cenários cobrem os fluxos implementados; isso não substitui a execução e revisão da matriz completa de aceitação do desafio. Consulte `ARCHITECTURE.md` e os relatórios Lighthouse/Playwright antes de avaliar a entrega.
