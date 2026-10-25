@@ -18,7 +18,19 @@ function authenticatedUser(request: Request) {
   const id = state.sessions[token]
   return id ? state.users.find((user) => user.id === id) ?? null : null
 }
-function readWallets(): Record<string, Wallet[]> { return JSON.parse(localStorage.getItem(walletStorageKey) ?? '{}') as Record<string, Wallet[]> }
+function readWallets(): Record<string, Wallet[]> {
+  const saved = localStorage.getItem(walletStorageKey)
+  if (saved !== null) return JSON.parse(saved) as Record<string, Wallet[]>
+
+  // Give the documented demo collectors a usable simulated wallet on first use.
+  // Accounts created through registration still start without a wallet.
+  const initialWallets: Record<string, Wallet[]> = {
+    'demo-1': [{ id: 'wallet-demo-1', label: 'Carteira Demo', address: `0x${'1'.repeat(40)}`, network: 'Ethereum', primary: true }],
+    'demo-2': [{ id: 'wallet-demo-2', label: 'Carteira Demo', address: `0x${'2'.repeat(40)}`, network: 'Ethereum', primary: true }],
+  }
+  saveWallets(initialWallets)
+  return initialWallets
+}
 function saveWallets(wallets: Record<string, Wallet[]>) { localStorage.setItem(walletStorageKey, JSON.stringify(wallets)) }
 
 export const authHandlers = [

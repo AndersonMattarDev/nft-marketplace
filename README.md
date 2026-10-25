@@ -50,7 +50,7 @@ O Lighthouse precisa do Node.js 22.19 ou mais recente e de uma instalação do C
 - `/receipt/:orderId`: confirmação consultada na API simulada e limitada ao proprietário do pedido.
 - `/register`, `/login` e `/account`: cadastro, login, restauração de sessão, edição de perfil/avatar, senha, carteiras, favoritos e logout.
 
-Credenciais de demonstração: `demo@kurio.test` / `kurio123` e `alex@kurio.test` / `kurio123`. O cadastro aplica SHA-256 à senha antes de persistir o usuário simulado. Tokens de sessão e usuários simulados ficam no armazenamento local do navegador; senhas não são persistidas em texto puro. Após uma atualização, o perfil público da sessão é recuperado pela API REST.
+Credenciais de demonstração: `demo@kurio.test` / `kurio123` e `alex@kurio.test` / `kurio123`. Cada conta de demonstração recebe uma carteira simulada na primeira consulta, permitindo concluir uma compra sem cadastro manual de carteira. Contas novas continuam podendo cadastrar a própria carteira pelo perfil. O cadastro aplica SHA-256 à senha antes de persistir o usuário simulado. Tokens de sessão e usuários simulados ficam no armazenamento local do navegador; senhas não são persistidas em texto puro. Após uma atualização, o perfil público da sessão é recuperado pela API REST.
 
 O carrinho de visitante e os carrinhos das contas são armazenados separadamente no cenário MSW. Ao entrar ou se cadastrar, o carrinho de visitante é migrado para a conta autenticada no primeiro acesso ao carrinho. O logout limpa o cache privado do TanStack Query. A chave `kurio-order-attempt` é reutilizada ao tentar novamente um pedido após timeout; uma repetição da mesma tentativa retorna o mesmo pedido simulado.
 

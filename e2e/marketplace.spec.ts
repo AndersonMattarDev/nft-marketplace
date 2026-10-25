@@ -109,6 +109,22 @@ test('collector completes a simulated purchase and sees a receipt', async ({ pag
   await expect(page.getByRole('heading', { name: /Recibo · ORD-/ })).toBeVisible()
 })
 
+test('demo collector can buy with its preconfigured simulated wallet', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('E-mail').fill('demo@kurio.test')
+  await page.getByLabel('Senha').fill('kurio123')
+  await page.getByRole('button', { name: 'Entrar' }).click()
+  await expect(page.getByRole('link', { name: 'Minha conta' })).toBeVisible()
+  await page.goto('/nft/cosmic-001')
+  await page.getByRole('button', { name: 'Adicionar ao carrinho' }).click()
+  await page.goto('/cart')
+  await page.getByRole('link', { name: 'Continuar para pagamento' }).click()
+  await expect(page.getByLabel('Carteira')).toHaveValue('wallet-demo-1')
+  await page.getByRole('button', { name: 'Conectar carteira simulada' }).click()
+  await page.getByRole('button', { name: 'Confirmar compra simulada' }).click()
+  await expect(page.getByRole('heading', { name: 'Compra concluída' })).toBeVisible()
+})
+
 test('checkout requires a session and returns the collector to the purchase', async ({ page }) => {
   await page.goto('/checkout')
   await expect(page).toHaveURL(/login.*returnTo/)
